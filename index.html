@@ -30,7 +30,6 @@ html, body {
   padding: 24px;
   border-radius: 18px;
   text-align: center;
-  transition: transform 0.6s ease, box-shadow 0.6s ease;
 }
 
 .progress-wrapper {
@@ -63,42 +62,34 @@ html, body {
 .num { font-size: 2.2rem; font-weight: bold; }
 .label { font-size: 0.7rem; letter-spacing: 1px; }
 
-.message {
-  margin-top: 10px;
-  font-size: 0.85rem;
-  opacity: 0.9;
-}
+.message { font-size: 0.85rem; opacity: 0.9; }
 
-.frozen {
-  opacity: 0.6;
-}
-
-.end {
-  animation: endReveal 1.2s ease forwards;
-}
-
-@keyframes endReveal {
-  from { opacity: 0; transform: translateY(20px); }
-  to { opacity: 1; transform: translateY(0); }
-}
-
-.confetti {
+.dev {
   position: fixed;
-  width: 8px;
-  height: 8px;
-  top: -10px;
-  animation: fall linear infinite;
+  bottom: 12px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: rgba(0,0,0,0.65);
+  backdrop-filter: blur(10px);
+  padding: 10px;
+  border-radius: 14px;
+  font-size: 0.8rem;
 }
 
-@keyframes fall {
-  to { transform: translateY(110vh) rotate(360deg); }
+.dev button {
+  margin: 4px;
+  padding: 6px 10px;
+  border-radius: 8px;
+  border: none;
+  background: #4facfe;
+  color: #000;
 }
 </style>
 </head>
 
 <body>
-<div class="container" id="container">
-  <h1>Countdown</h1>
+<div class="container">
+  <h1 id="title">Countdown</h1>
   <div class="message" id="message"></div>
 
   <div class="progress-wrapper">
@@ -106,52 +97,93 @@ html, body {
   </div>
 
   <div class="countdown">
-    <div class="box"><div class="num" id="days">0</div><div class="label">DAYS</div></div>
-    <div class="box"><div class="num" id="hours">0</div><div class="label">HOURS</div></div>
-    <div class="box"><div class="num" id="minutes">0</div><div class="label">MINUTES</div></div>
-    <div class="box"><div class="num" id="seconds">0</div><div class="label">SECONDS</div></div>
+    <div class="box"><div class="num" id="days"></div><div class="label">DAYS</div></div>
+    <div class="box"><div class="num" id="hours"></div><div class="label">HOURS</div></div>
+    <div class="box"><div class="num" id="minutes"></div><div class="label">MINUTES</div></div>
+    <div class="box"><div class="num" id="seconds"></div><div class="label">SECONDS</div></div>
   </div>
 </div>
 
 <script>
 function estNow() {
   return new Date(
-    new Date().toLocaleString("en-US", { timeZone: "America/New_York" })
+    new Date().toLocaleString("en-US",{timeZone:"America/New_York"})
   );
 }
 
 const start = new Date("February 3, 2026 00:00:00 EST");
 const end = new Date("February 3, 2028 00:00:00 EST");
+const oneYear = new Date("February 3, 2027 00:00:00 EST");
 
-let lastClock = estNow().getTime();
-let lastPerf = performance.now();
-let freeze = false;
-let stableTime = 0;
+let devOffset = 0;
+let devMode = false;
 
-function confetti(count=40) {
-  for (let i=0;i<count;i++) {
+function nowSafe() {
+  return new Date(estNow().getTime() + devOffset);
+}
+
+function confetti(n=40) {
+  for (let i=0;i<n;i++) {
     const c=document.createElement("div");
-    c.className="confetti";
+    c.style.position="fixed";
     c.style.left=Math.random()*100+"vw";
-    c.style.backgroundColor=`hsl(${Math.random()*360},100%,50%)`;
-    c.style.animationDuration=(2+Math.random()*2)+"s";
+    c.style.top="-10px";
+    c.style.width="6px";
+    c.style.height="6px";
+    c.style.background=`hsl(${Math.random()*360},100%,50%)`;
+    c.style.animation="fall 3s linear";
     document.body.appendChild(c);
   }
 }
 
 function update() {
-  const now = estNow().getTime();
-  const perf = performance.now();
+  const now = nowSafe();
 
-  const clockDelta = now - lastClock;
-  const perfDelta = perf - lastPerf;
+  if (now >= end) {
+    document.body.innerHTML = "<h1>📞 Call today?</h1>";
+    confetti(120);
+    return;
+  }
 
-  lastClock = now;
-  lastPerf = perf;
+  const diff = end - now;
+  days.textContent = Math.floor(diff/86400000);
+  hours.textContent = Math.floor(diff/3600000)%24;
+  minutes.textContent = Math.floor(diff/60000)%60;
+  seconds.textContent = Math.floor(diff/1000)%60;
 
-  // Detect tampering
-  if (
-    clockDelta < -5000 ||
-    Math.abs(clockDelta - perfDelta) > 60000
-  ) {
-    f
+  progress.style.width = (((now-start)/(end-start))*100).toFixed(2)+"%";
+}
+
+setInterval(update,1000);
+update();
+
+/* DEV MODE UNLOCK */
+let taps=0, firstTap=0;
+title.onclick=()=>{
+  const t=Date.now();
+  if (!firstTap) firstTap=t;
+  if (t-firstTap>5000){taps=0;firstTap=t;}
+  if (++taps===7) enableDev();
+};
+
+function enableDev(){
+  devMode=true;
+  const d=document.createElement("div");
+  d.className="dev";
+  d.innerHTML=`
+    <div>DEV MODE</div>
+    <button onclick="devOffset+=86400000">+1 Day</button>
+    <button onclick="confetti()">Midnight</button>
+    <button onclick="confetti(80)">2027</button>
+    <button onclick="confetti(120)">End</button>
+    <button onclick="exitDev()">Exit</button>`;
+  document.body.appendChild(d);
+}
+
+function exitDev(){
+  devOffset=0;
+  location.reload();
+}
+</script>
+</body>
+</html>
