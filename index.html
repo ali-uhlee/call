@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <title>Countdown</title>
 
 <link rel="manifest" href="manifest.json">
@@ -15,42 +15,49 @@
 html, body {
   margin: 0;
   height: 100%;
-  font-family: system-ui, sans-serif;
   background: linear-gradient(135deg, #1e3c72, #2a5298);
+  font-family: system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
   color: white;
+}
+
+body {
   display: flex;
   align-items: center;
   justify-content: center;
 }
 
 .container {
-  width: 90%;
+  width: 92%;
   max-width: 380px;
   background: rgba(0,0,0,0.35);
   padding: 24px;
-  border-radius: 18px;
+  border-radius: 20px;
   text-align: center;
 }
 
 .progress-wrapper {
   height: 10px;
-  background: rgba(255,255,255,0.2);
+  background: rgba(255,255,255,0.25);
   border-radius: 10px;
   overflow: hidden;
-  margin: 12px 0;
+  margin: 10px 0 6px;
 }
 
 .progress-bar {
   height: 100%;
   background: linear-gradient(90deg, #00f2fe, #4facfe);
-  width: 0%;
-  transition: width 0.3s linear;
+}
+
+.meta {
+  font-size: 0.75rem;
+  opacity: 0.85;
 }
 
 .countdown {
   display: grid;
   grid-template-columns: repeat(2,1fr);
   gap: 12px;
+  margin-top: 14px;
 }
 
 .box {
@@ -59,21 +66,20 @@ html, body {
   padding: 14px 0;
 }
 
-.num { font-size: 2.2rem; font-weight: bold; }
-.label { font-size: 0.7rem; letter-spacing: 1px; }
-
-.message { font-size: 0.85rem; opacity: 0.9; }
+.num { font-size: 2.2rem; font-weight: 700; }
+.label { font-size: 0.7rem; letter-spacing: 1px; opacity: 0.8; }
 
 .dev {
   position: fixed;
   bottom: 12px;
   left: 50%;
   transform: translateX(-50%);
-  background: rgba(0,0,0,0.65);
+  background: rgba(0,0,0,0.7);
   backdrop-filter: blur(10px);
   padding: 10px;
   border-radius: 14px;
   font-size: 0.8rem;
+  z-index: 9999;
 }
 
 .dev button {
@@ -84,44 +90,20 @@ html, body {
   background: #4facfe;
   color: #000;
 }
-
-.confetti {
-  position: fixed;
-  width: 8px;
-  height: 8px;
-  top: -10px;
-  animation: fall linear infinite;
-}
-
-@keyframes fall {
-  to { transform: translateY(110vh) rotate(360deg); }
-}
-
-.end {
-  animation: endReveal 1.2s ease forwards;
-}
-
-@keyframes endReveal {
-  from { opacity: 0; transform: translateY(20px); }
-  to { opacity: 1; transform: translateY(0); }
-}
-
-.frozen {
-  opacity: 0.6;
-}
 </style>
 </head>
 
 <body>
 <div class="container">
-  <h1 id="title">Countdown</h1>
-  <div class="message" id="message"></div>
+  <h1>Countdown</h1>
 
-  <div class="progress-wrapper">
+  <div class="progress-wrapper" id="progressWrap">
     <div class="progress-bar" id="progress"></div>
   </div>
 
-  <div class="countdown">
+  <div class="meta" id="meta"></div>
+
+  <div class="countdown" id="countdown">
     <div class="box"><div class="num" id="days"></div><div class="label">DAYS</div></div>
     <div class="box"><div class="num" id="hours"></div><div class="label">HOURS</div></div>
     <div class="box"><div class="num" id="minutes"></div><div class="label">MINUTES</div></div>
@@ -130,95 +112,61 @@ html, body {
 </div>
 
 <script>
-function estNow() {
-  return new Date(
-    new Date().toLocaleString("en-US",{timeZone:"America/New_York"})
+/* ---------- EST OFFSET (CALCULATED ONCE) ---------- */
+function getESTOffsetMs() {
+  const now = new Date();
+  const est = new Date(
+    new Intl.DateTimeFormat("en-US", {
+      timeZone: "America/New_York",
+      hour12: false,
+      year: "numeric", month: "2-digit", day: "2-digit",
+      hour: "2-digit", minute: "2-digit", second: "2-digit"
+    }).format(now)
   );
+  return est.getTime() - now.getTime();
 }
 
-const start = new Date("February 3, 2026 00:00:00 EST");
-const end = new Date("February 3, 2028 00:00:00 EST");
-const oneYear = new Date("February 3, 2027 00:00:00 EST");
+const EST_OFFSET = getESTOffsetMs();
 
+/* ---------- CONSTANTS ---------- */
+const START = new Date("2026-02-03T00:00:00-05:00").getTime();
+const END   = new Date("2028-02-03T00:00:00-05:00").getTime();
+
+/* ---------- DEV OFFSET ---------- */
 let devOffset = 0;
-let devMode = false;
 
-function nowSafe() {
-  return new Date(estNow().getTime() + devOffset);
+/* ---------- TIME SOURCE (SMOOTH) ---------- */
+function nowEST() {
+  return Date.now() + EST_OFFSET + devOffset;
 }
 
-function confetti(n=40) {
-  for (let i=0;i<n;i++) {
-    const c=document.createElement("div");
-    c.style.position="fixed";
-    c.style.left=Math.random()*100+"vw";
-    c.style.top="-10px";
-    c.style.width="6px";
-    c.style.height="6px";
-    c.style.background=`hsl(${Math.random()*360},100%,50%)`;
-    c.style.animation="fall 3s linear";
-    document.body.appendChild(c);
-  }
-}
-
+/* ---------- UPDATE LOOP ---------- */
 function update() {
-  const now = nowSafe().getTime();
+  const now = nowEST();
 
-  if (now >= end) {
-    document.body.innerHTML = "<h1 class='end'>📞 Call today?</h1>";
-    confetti(120);
+  if (now >= END) {
+    document.body.innerHTML = "<h1 style='animation:fade 1.2s ease'>📞 Call today?</h1>";
     return;
   }
 
-  const diff = end - now;
-  days.textContent = Math.floor(diff/86400000);
-  hours.textContent = Math.floor(diff/3600000)%24;
-  minutes.textContent = Math.floor(diff/60000)%60;
-  seconds.textContent = Math.floor(diff/1000)%60;
+  const diff = END - now;
 
-  progress.style.width = (((now-start)/(end-start))*100).toFixed(2)+"%";
+  days.textContent = Math.floor(diff / 86400000);
+  hours.textContent = Math.floor(diff / 3600000) % 24;
+  minutes.textContent = Math.floor(diff / 60000) % 60;
+  seconds.textContent = Math.floor(diff / 1000) % 60;
+
+  const percent = ((now - START) / (END - START)) * 100;
+
+  progress.style.width = percent.toFixed(2) + "%";
+  meta.textContent =
+    percent.toFixed(2) + "% completed • " +
+    Math.floor((now - START) / 86400000) + " days elapsed";
 }
 
-setInterval(update,1000);
+/* ---------- HIGH-FREQUENCY, SMOOTH ---------- */
+setInterval(update, 100);
 update();
-
-/* DEV MODE UNLOCK: HOLD TITLE 10 SECONDS */
-const title = document.getElementById("title");
-let pressTimer;
-title.addEventListener("touchstart", startPress);
-title.addEventListener("mousedown", startPress);
-title.addEventListener("touchend", cancelPress);
-title.addEventListener("mouseup", cancelPress);
-title.addEventListener("mouseleave", cancelPress);
-
-function startPress(e) {
-  e.preventDefault();
-  pressTimer = setTimeout(enableDev, 10000);
-}
-
-function cancelPress() {
-  clearTimeout(pressTimer);
-}
-
-function enableDev() {
-  if (devMode) return;
-  devMode = true;
-  const d = document.createElement("div");
-  d.className="dev";
-  d.innerHTML=`
-    <div>DEV MODE</div>
-    <button onclick="devOffset+=86400000">+1 Day</button>
-    <button onclick="confetti()">Midnight</button>
-    <button onclick="confetti(80)">2027</button>
-    <button onclick="confetti(120)">End</button>
-    <button onclick="exitDev()">Exit</button>`;
-  document.body.appendChild(d);
-}
-
-function exitDev() {
-  devOffset=0;
-  location.reload();
-}
 </script>
 </body>
 </html>
